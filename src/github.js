@@ -70,18 +70,74 @@ const init = () => {
 		}
 	}
 
-	const createComment = async (body) => {
-		// Remove indentation
-		const dedented = body.replace(/^[^\S\n]+/gm, '')
+	const createOrEditComment = async (commit, previewUrl, deployment) => {
+		const { data } = await client.issues.listComments({
+			owner: USER,
+			repo: REPOSITORY,
+			issue_number: PR_NUMBER
+		})
 
-		const comment = await client.issues.createComment({
+		if (data.length < 1) return
+
+		const previousComment = data.find((comment) => comment.body.includes(`This pull request has been deployed to Vercel.`))
+		const isSameCommit = previousComment.body.includes(commit)
+
+		if (previousComment && isSameCommit) {
+			const body = previousComment.body.replace('<-- new row -->', `<tr>
+			<td><code>${ deployment.id }</code></td>
+			<td><a href='${ previewUrl }'>${ previewUrl }</a></td>
+			<td><a href='${ deployment.inspectorUrl }'>${ deployment.inspectorUrl }</a></td>
+		</tr>`)
+
+			return await client.issues.updateComment({
+				owner: USER,
+				repo: REPOSITORY,
+				issue_number: PR_NUMBER,
+				comment_id: previousComment.id,
+				body: body.replace(/^[^\S\n]+/gm, '')
+			})
+		}
+
+		const body = `
+						This pull request has been deployed to Vercel. ${ commit }		
+						<table>
+							<thead>
+								<tr>
+									<td><strong>Name</strong></td>
+									<td><strong>Preview</strong></td>
+									<td><strong>Inspect</strong></td>
+								</tr>
+							</thead>
+							<tbody>
+							</tbody>
+							<tr>
+								<td><code>${ deployment.id }</code></td>
+								<td><a href='${ previewUrl }'>${ previewUrl }</a></td>
+								<td><a href='${ deployment.inspectorUrl }'>${ deployment.inspectorUrl }</a></td>
+							</tr>
+							<-- new row -->
+						</table>
+	
+						[View Workflow Logs](${ LOG_URL })
+					`
+
+		if (previousComment && !isSameCommit) {
+			return await client.issues.updateComment({
+				owner: USER,
+				repo: REPOSITORY,
+				issue_number: PR_NUMBER,
+				comment_id: previousComment.id,
+				body: body.replace(/^[^\S\n]+/gm, '')
+			})
+		}
+
+		return await client.issues.createOrEditComment({
 			owner: USER,
 			repo: REPOSITORY,
 			issue_number: PR_NUMBER,
-			body: dedented
+			body: body.replace(/^[^\S\n]+/gm, '')
 		})
 
-		return comment.data
 	}
 
 	const addLabel = async () => {
@@ -114,7 +170,7 @@ const init = () => {
 		createDeployment,
 		updateDeployment,
 		deleteExistingComment,
-		createComment,
+		createOrEditComment,
 		addLabel,
 		getCommit
 	}
