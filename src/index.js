@@ -17,7 +17,6 @@ const {
 	PR_PREVIEW_DOMAIN,
 	ALIAS_DOMAINS,
 	ATTACH_COMMIT_METADATA,
-	LOG_URL,
 	DEPLOY_PR_FROM_FORK,
 	IS_FORK,
 	ACTOR
@@ -35,7 +34,7 @@ const run = async () => {
 			**@${ USER }** To allow this behaviour set \`DEPLOY_PR_FROM_FORK\` to true ([more info](https://github.com/BetaHuhn/deploy-to-vercel-action#deploying-a-pr-made-from-a-fork-or-dependabot)).
 		`
 
-		const comment = await github.createComment(body)
+		const comment = await github.createOrEditComment(body)
 		core.info(`Comment created: ${ comment.html_url }`)
 
 		core.setOutput('DEPLOYMENT_CREATED', false)
@@ -119,35 +118,13 @@ const run = async () => {
 
 			if (CREATE_COMMENT) {
 				core.info('Creating new comment on PR')
-				const body = `
-					This pull request has been deployed to Vercel.
-
-					<table>
-						<tr>
-							<td><strong>Latest commit:</strong></td>
-							<td><code>${ SHA.substring(0, 7) }</code></td>
-						</tr>
-						<tr>
-							<td><strong>✅ Preview:</strong></td>
-							<td><a href='${ previewUrl }'>${ previewUrl }</a></td>
-						</tr>
-						<tr>
-							<td><strong>🔍 Inspect:</strong></td>
-							<td><a href='${ deployment.inspectorUrl }'>${ deployment.inspectorUrl }</a></td>
-						</tr>
-					</table>
-
-					[View Workflow Logs](${ LOG_URL })
-				`
-
-				const comment = await github.createComment(body)
+				const comment = await github.createOrEditComment(commit, previewUrl, deployment)
 				core.info(`Comment created: ${ comment.html_url }`)
 			}
 
 			if (PR_LABELS) {
 				core.info('Adding label(s) to PR')
 				const labels = await github.addLabel()
-
 				core.info(`Label(s) "${ labels.map((label) => label.name).join(', ') }" added`)
 			}
 		}

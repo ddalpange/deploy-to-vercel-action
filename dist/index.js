@@ -15371,18 +15371,74 @@ const init = () => {
 		}
 	}
 
-	const createComment = async (body) => {
-		// Remove indentation
-		const dedented = body.replace(/^[^\S\n]+/gm, '')
+	const createOrEditComment = async (commit, previewUrl, deployment) => {
+		const { data } = await client.issues.listComments({
+			owner: USER,
+			repo: REPOSITORY,
+			issue_number: PR_NUMBER
+		})
 
-		const comment = await client.issues.createComment({
+		if (data.length < 1) return
+
+		const previousComment = data.find((comment) => comment.body.includes(`This pull request has been deployed to Vercel.`))
+		const isSameCommit = previousComment.body.includes(commit)
+
+		if (previousComment && isSameCommit) {
+			const body = previousComment.body.replace('<-- new row -->', `<tr>
+			<td><code>${ deployment.id }</code></td>
+			<td><a href='${ previewUrl }'>${ previewUrl }</a></td>
+			<td><a href='${ deployment.inspectorUrl }'>${ deployment.inspectorUrl }</a></td>
+		</tr>`)
+
+			return await client.issues.updateComment({
+				owner: USER,
+				repo: REPOSITORY,
+				issue_number: PR_NUMBER,
+				comment_id: previousComment.id,
+				body: body.replace(/^[^\S\n]+/gm, '')
+			})
+		}
+
+		const body = `
+						This pull request has been deployed to Vercel. ${ commit }		
+						<table>
+							<thead>
+								<tr>
+									<td><strong>Name</strong></td>
+									<td><strong>Preview</strong></td>
+									<td><strong>Inspect</strong></td>
+								</tr>
+							</thead>
+							<tbody>
+							</tbody>
+							<tr>
+								<td><code>${ deployment.id }</code></td>
+								<td><a href='${ previewUrl }'>${ previewUrl }</a></td>
+								<td><a href='${ deployment.inspectorUrl }'>${ deployment.inspectorUrl }</a></td>
+							</tr>
+							<-- new row -->
+						</table>
+	
+						[View Workflow Logs](${ LOG_URL })
+					`
+
+		if (previousComment && !isSameCommit) {
+			return await client.issues.updateComment({
+				owner: USER,
+				repo: REPOSITORY,
+				issue_number: PR_NUMBER,
+				comment_id: previousComment.id,
+				body: body.replace(/^[^\S\n]+/gm, '')
+			})
+		}
+
+		return await client.issues.createOrEditComment({
 			owner: USER,
 			repo: REPOSITORY,
 			issue_number: PR_NUMBER,
-			body: dedented
+			body: body.replace(/^[^\S\n]+/gm, '')
 		})
 
-		return comment.data
 	}
 
 	const addLabel = async () => {
@@ -15415,7 +15471,7 @@ const init = () => {
 		createDeployment,
 		updateDeployment,
 		deleteExistingComment,
-		createComment,
+		createOrEditComment,
 		addLabel,
 		getCommit
 	}
@@ -15806,7 +15862,6 @@ const {
 	PR_PREVIEW_DOMAIN,
 	ALIAS_DOMAINS,
 	ATTACH_COMMIT_METADATA,
-	LOG_URL,
 	DEPLOY_PR_FROM_FORK,
 	IS_FORK,
 	ACTOR
@@ -15824,7 +15879,7 @@ const run = async () => {
 			**@${ USER }** To allow this behaviour set \`DEPLOY_PR_FROM_FORK\` to true ([more info](https://github.com/BetaHuhn/deploy-to-vercel-action#deploying-a-pr-made-from-a-fork-or-dependabot)).
 		`
 
-		const comment = await github.createComment(body)
+		const comment = await github.createOrEditComment(body)
 		core.info(`Comment created: ${ comment.html_url }`)
 
 		core.setOutput('DEPLOYMENT_CREATED', false)
@@ -15908,35 +15963,13 @@ const run = async () => {
 
 			if (CREATE_COMMENT) {
 				core.info('Creating new comment on PR')
-				const body = `
-					This pull request has been deployed to Vercel.
-
-					<table>
-						<tr>
-							<td><strong>Latest commit:</strong></td>
-							<td><code>${ SHA.substring(0, 7) }</code></td>
-						</tr>
-						<tr>
-							<td><strong>✅ Preview:</strong></td>
-							<td><a href='${ previewUrl }'>${ previewUrl }</a></td>
-						</tr>
-						<tr>
-							<td><strong>🔍 Inspect:</strong></td>
-							<td><a href='${ deployment.inspectorUrl }'>${ deployment.inspectorUrl }</a></td>
-						</tr>
-					</table>
-
-					[View Workflow Logs](${ LOG_URL })
-				`
-
-				const comment = await github.createComment(body)
+				const comment = await github.createOrEditComment(commit, previewUrl, deployment)
 				core.info(`Comment created: ${ comment.html_url }`)
 			}
 
 			if (PR_LABELS) {
 				core.info('Adding label(s) to PR')
 				const labels = await github.addLabel()
-
 				core.info(`Label(s) "${ labels.map((label) => label.name).join(', ') }" added`)
 			}
 		}
